@@ -195,7 +195,9 @@ func (a *App) startLAN() error {
 	mux.HandleFunc("/app/", a.handleAppDownload)
 	mux.HandleFunc("/u/", a.handleUpdateDownload)
 	mux.HandleFunc("/s/", a.handleSync)
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	mux.HandleFunc("/", a.handleLanHome) // any other address: a helpful page instead of "404 page not found"
+	a.phoneAppFile()
+	srv := &http.Server{Handler: a.logLAN(mux), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	go a.reverseLoop()
 	return nil
@@ -220,22 +222,101 @@ func (a *App) sessionFor(id string, forSync bool) *session {
 	return s
 }
 
-func serveAPK(w http.ResponseWriter) {
+// phoneAppFile keeps a copy of the built-in phone app in the program's install folder
+// (the install folder: %LOCALAPPDATA%\Programs\Insulin Diary\Phone app) and returns its path.
+// The QR code's install page and the USB-cable option both hand out this file.
+func (a *App) phoneAppFile() string {
+	dir := phoneAppDir(a.dir)
+	p := filepath.Join(dir, "InsulinDiary-"+phoneApp.VersionName+".apk")
+	if st, err := os.Stat(p); err == nil && st.Size() == int64(len(apk)) {
+		if b, err := os.ReadFile(p); err == nil && bytes.Equal(b, apk) {
+			return p
+		}
+	}
+	_ = os.MkdirAll(dir, 0o755)
+	if old, _ := filepath.Glob(filepath.Join(dir, "InsulinDiary-*.apk")); len(old) > 0 {
+		for _, f := range old {
+			_ = os.Remove(f)
+		}
+	}
+	if err := os.WriteFile(p, apk, 0o644); err != nil {
+		return ""
+	}
+	return p
+}
+
+func (a *App) serveAPK(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 	w.Header().Set("Content-Disposition", `attachment; filename="InsulinDiary-`+phoneApp.VersionName+`.apk"`)
 	w.Header().Set("Content-Length", strconv.Itoa(len(apk)))
 	w.Header().Set("Cache-Control", "no-store")
+	if p := a.phoneAppFile(); p != "" {
+		if f, err := os.Open(p); err == nil {
+			defer f.Close()
+			_, _ = io.Copy(w, f)
+			return
+		}
+	}
 	_, _ = io.Copy(w, bytes.NewReader(apk))
+}
+
+// ---------- connection log (shown in the PC's network check) ----------
+
+type lanEvent struct {
+	At     int64  `json:"at"`
+	From   string `json:"from"`
+	What   string `json:"what"`
+	Status int    `json:"status"`
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusWriter) WriteHeader(c int) { s.status = c; s.ResponseWriter.WriteHeader(c) }
+
+func (a *App) logLAN(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w, status: 200}
+		h.ServeHTTP(sw, r)
+		what := "other"
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/p/"):
+			what = "install-page"
+		case strings.HasPrefix(r.URL.Path, "/app/"), strings.HasPrefix(r.URL.Path, "/u/"):
+			what = "app-download"
+		case strings.HasPrefix(r.URL.Path, "/s/"):
+			what = "sync"
+		case r.URL.Path == "/favicon.ico" || r.URL.Path == "/ping":
+			return
+		}
+		if sw.Header().Get("X-Insulin-Diary-Code") == "expired" && sw.status < 300 {
+			sw.status = http.StatusGone // shown as "expired code" in the PC's connection list
+		}
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		a.mu.Lock()
+		a.lanLog = append(a.lanLog, lanEvent{At: time.Now().UnixMilli(), From: host, What: what, Status: sw.status})
+		if len(a.lanLog) > 30 {
+			a.lanLog = a.lanLog[len(a.lanLog)-30:]
+		}
+		a.mu.Unlock()
+	})
+}
+
+// GET / (and any unknown address) on the phone side.
+func (a *App) handleLanHome(w http.ResponseWriter, r *http.Request) {
+	a.renderInstall(w, r, "", false)
 }
 
 // GET /app/<code id>/InsulinDiary.apk – first install, from the page the phone camera opens.
 func (a *App) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/app/"), "/")
 	if len(parts) != 2 || a.sessionFor(parts[0], false) == nil {
-		http.Error(w, "This download link has expired. Show a new code on your PC and scan it again.", http.StatusGone)
+		a.renderInstall(w, r, "", false)
 		return
 	}
-	serveAPK(w)
+	a.serveAPK(w)
 }
 
 // GET /u/<one-time token>/InsulinDiary.apk – update, offered inside an encrypted sync answer.
@@ -248,7 +329,7 @@ func (a *App) handleUpdateDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "This update link has expired. Sync again to get a new one.", http.StatusGone)
 		return
 	}
-	serveAPK(w)
+	a.serveAPK(w)
 }
 
 // POST /s/<code id> – encrypted sync (the phone connects to the PC).
@@ -449,6 +530,7 @@ func pickLang(acceptLanguage string) string {
 var installTpl = template.Must(template.New("p").Parse(`<!doctype html>
 <html lang="{{.Lang}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.T.title}}</title>
+{{if .OK}}<meta http-equiv="refresh" content="1;url=/app/{{.ID}}/InsulinDiary.apk">{{end}}
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--ink:#1b1f24;--muted:#5d6672;--line:#e2e5e9;--accent:#1f6feb;--soft:#e8f0fe}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1216;--card:#171b21;--ink:#e6e9ed;--muted:#9aa4b0;--line:#2a3038;--accent:#2a6ae0;--soft:#16233a}}
@@ -475,8 +557,16 @@ ol{margin:0;padding-left:20px}li{margin:6px 0}.note{background:var(--soft);borde
 
 func (a *App) handleInstallPage(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/p/")
+	a.renderInstall(w, r, id, a.sessionFor(id, false) != nil)
+}
+
+// renderInstall: with a valid code, the page starts the app download from this PC by itself
+// (and offers a button); otherwise it explains how to get a fresh code. Never a bare error page.
+func (a *App) renderInstall(w http.ResponseWriter, r *http.Request, id string, ok bool) {
 	host, _ := os.Hostname()
-	ok := a.sessionFor(id, false) != nil
+	if !ok {
+		w.Header().Set("X-Insulin-Diary-Code", "expired")
+	}
 	lang := pickLang(r.Header.Get("Accept-Language"))
 	t := installText[lang]
 	h := map[string]template.HTML{}
@@ -486,9 +576,6 @@ func (a *App) handleInstallPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	if !ok {
-		w.WriteHeader(http.StatusGone)
-	}
 	_ = installTpl.Execute(w, map[string]any{
 		"OK": ok, "ID": id, "Host": host, "Version": phoneApp.VersionName, "Lang": lang, "T": t, "H": h,
 		"Size": fmt.Sprintf("%.1f MB", float64(len(apk))/1e6),

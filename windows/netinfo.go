@@ -177,6 +177,7 @@ type netCheck struct {
 	Ignored  []Adapter     `json:"ignored"`  // VPN / virtual adapters, listed for information
 	Firewall *firewallInfo `json:"firewall"` // nil when unknown (not Windows, or the check failed)
 	CanFix   bool          `json:"canFix"`
+	Recent   []lanEvent    `json:"recent"` // last phone connections to this PC
 	Checked  int64         `json:"checked"`
 }
 
@@ -224,7 +225,11 @@ func (a *App) handleNet(w http.ResponseWriter, r *http.Request) {
 		a.netCache, a.netAt = c, time.Now()
 		a.mu.Unlock()
 	}
-	writeJSON(w, 200, c)
+	out := *c
+	a.mu.Lock()
+	out.Recent = append([]lanEvent(nil), a.lanLog...)
+	a.mu.Unlock()
+	writeJSON(w, 200, out)
 }
 
 func (a *App) handleNetFix(w http.ResponseWriter, r *http.Request) {
@@ -248,4 +253,12 @@ func (a *App) handleNetFix(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 	}
+}
+
+// GET /api/net/log – the last phone connections (cheap; the sync screen asks every few seconds).
+func (a *App) handleNetLog(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	out := append([]lanEvent(nil), a.lanLog...)
+	a.mu.Unlock()
+	writeJSON(w, 200, out)
 }

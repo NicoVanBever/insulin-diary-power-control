@@ -375,6 +375,7 @@ func runApp() {
 		return
 	}
 	app := newApp(dir)
+	go app.phoneAppFile() // put the phone app in the install folder, ready for the QR code and USB cable
 	go func() { _ = (&http.Server{Handler: app.localHandler(), ReadHeaderTimeout: 10 * time.Second}).Serve(ln) }()
 
 	// Move entries from the very first version (kept in the window's own storage) on first start.
@@ -494,3 +495,6 @@ func revealFile(path string) {
 	cmd := exec.Command("explorer.exe", "/select,"+path)
 	_ = cmd.Start()
 }
+
+// phoneAppDir: the phone app lives next to the program, in its install folder.
+func phoneAppDir(dataDir string) string { return filepath.Join(installDir(), "Phone app") }

@@ -33,3 +33,5 @@ func main() {
 }
 
 func revealFile(path string) {}
+
+func phoneAppDir(dataDir string) string { return dataDir + "/Phone app" }

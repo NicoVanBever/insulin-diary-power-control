@@ -853,6 +853,14 @@ T = [
 ("Saved and opened in File Explorer:", "Opgeslagen en geopend in Verkenner:", "Enregistré et ouvert dans l'Explorateur de fichiers :", "Gespeichert und im Explorer geöffnet:"),
 ("Couldn't save the phone app file.", "Kon het bestand van de telefoonapp niet opslaan.", "Impossible d'enregistrer le fichier de l'app mobile.", "Die Datei der Handy-App konnte nicht gespeichert werden."),
 
+
+("Opened the install page", "Installatiepagina geopend", "Page d'installation ouverte", "Installationsseite geöffnet"),
+("Downloaded the phone app", "Telefoonapp gedownload", "App mobile téléchargée", "Handy-App heruntergeladen"),
+("Unknown address", "Onbekend adres", "Adresse inconnue", "Unbekannte Adresse"),
+("No phone has connected to this PC yet.", "Er heeft nog geen telefoon verbinding gemaakt met deze pc.", "Aucun téléphone ne s'est encore connecté à ce PC.", "Noch hat sich kein Handy mit diesem PC verbunden."),
+("Recent phone connections", "Recente telefoonverbindingen", "Connexions récentes du téléphone", "Letzte Handy-Verbindungen"),
+
+("Old code", "Oude code", "Ancien code", "Alter Code"),
 ]
 
 out = {}

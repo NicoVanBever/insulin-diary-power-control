@@ -362,7 +362,7 @@ input,select{accent-color:var(--accent)}
           <div class="lbl" id="syncMeta" style="text-align:center"></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:16px">
-          <div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Network check</h3><button class="btn sm" id="netAgain">Check again</button></div><div id="netBody" style="margin-top:10px"></div></div>
+          <div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Network check</h3><button class="btn sm" id="netAgain">Check again</button></div><div id="netBody" style="margin-top:10px"></div><div id="netLog"></div></div>
           <div class="card"><h3>How syncing works</h3>
             <ol style="margin:0;padding-left:20px;line-height:1.6"><li>Phone and PC on the <b>same network</b>: the same Wi-Fi or router (the PC may use a cable), the PC's mobile hotspot, the phone's hotspot, or the phone connected to the PC by USB cable with <b>USB tethering</b> switched on.</li><li><b>No app on the phone yet?</b> Point the phone's camera at the code. A page from this PC opens where you can download and install the app.</li><li><b>App installed?</b> In the app: <b>Sync</b> → <b>Scan code on PC</b>. Each side sends what the other is missing. If this PC has a newer version of the phone app, the phone offers to update.</li></ol>
             <p class="lbl" style="margin:10px 0 0">Every code is unique and carries its own 256-bit key, made from this PC's private key. Everything sent between phone and PC is encrypted with it (AES-256-GCM); the key itself never travels over the network. A code works for one sync and changes every 5 minutes. No account, no cloud. The first time, Windows may ask whether to allow Insulin Diary on your network: choose <b>Private networks</b> and click Allow.</p></div>
@@ -1670,12 +1670,21 @@ function syncEnter() {
   renderPhoneMeta();
   renderPhoneNet();
   if (PLATFORM === 'windows') {
-    loadNet(false);
+    loadNet(false); loadNetLog(); clearInterval(netLogTimer); netLogTimer = setInterval(loadNetLog, 4000);
     if (!syncInfo || syncInfo.expires < Date.now() + 5000) newSyncCode();
     clearInterval(syncTimer); syncTimer = setInterval(syncTick, 1000);
   }
 }
-function syncLeave() { clearInterval(syncTimer); syncTimer = null; }
+function syncLeave() { clearInterval(syncTimer); syncTimer = null; clearInterval(netLogTimer); netLogTimer = null; }
+let netLogTimer = null;
+const lanWhat = { 'install-page': 'Opened the install page', 'app-download': 'Downloaded the phone app', sync: 'Sync', other: 'Unknown address' };
+async function loadNetLog() {
+  let l = []; try { l = await (await fetch('/api/net/log', { cache: 'no-store' })).json() || []; } catch (e) { return; }
+  const el = $('#netLog'); if (!el) return;
+  if (!l.length) { el.innerHTML = '<div class="lbl" style="margin-top:10px">No phone has connected to this PC yet.</div>'; return; }
+  el.innerHTML = '<h3 style="margin:14px 0 4px;font-size:.95rem">Recent phone connections</h3>' + l.slice(-6).reverse().map(e =>
+    `<div class="alrow"><span><b>${lanWhat[e.what] || lanWhat.other}</b> <span class="muted">· ${esc(e.from)} · ${fmtTime(e.at)}</span></span><span class="pill ${e.status < 300 ? 'ok' : 'warn'}">${e.status < 300 ? 'OK' : e.status === 410 ? 'Old code' : esc(String(e.status))}</span></div>`).join('');
+}
 
 /* ---------------- network check ---------------- */
 let netState = null, netBusy = false;

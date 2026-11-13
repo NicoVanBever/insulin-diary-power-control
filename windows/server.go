@@ -45,6 +45,7 @@ type App struct {
 	netCache *netCheck // last network check (sync screen)
 	netAt    time.Time
 	lastPoll time.Time // the sync screen asks every second while it is open
+	lanLog   []lanEvent
 }
 
 func newApp(dir string) *App {
@@ -103,6 +104,7 @@ func (a *App) localHandler() http.Handler {
 	mux.HandleFunc("/api/sync/poll", a.handlePoll)
 	mux.HandleFunc("/api/sync/reply", a.handleReply)
 	mux.HandleFunc("/api/net", a.handleNet)
+	mux.HandleFunc("/api/net/log", a.handleNetLog)
 	mux.HandleFunc("/api/phoneapp", a.handlePhoneApp)
 	mux.HandleFunc("/api/net/fix", a.handleNetFix)
 	mux.HandleFunc("/api/autostart", func(w http.ResponseWriter, r *http.Request) {
