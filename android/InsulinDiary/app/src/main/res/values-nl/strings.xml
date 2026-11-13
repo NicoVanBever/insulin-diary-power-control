@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ch_alarms">Wekkers</string>
+    <string name="ch_alarms_desc">Wekkers voor insulinedoses en glucosecontroles</string>
+    <string name="ch_emergency">Noodinformatie</string>
+    <string name="ch_emergency_desc">Uw medische gegevens op het vergrendelscherm</string>
+    <string name="medical_info">Medische info</string>
+    <string name="saved_downloads">Opgeslagen in Downloads: %1$s</string>
+    <string name="saved_at">Opgeslagen: %1$s</string>
+    <string name="save_failed">Kon het bestand niet opslaan: %1$s</string>
+</resources>

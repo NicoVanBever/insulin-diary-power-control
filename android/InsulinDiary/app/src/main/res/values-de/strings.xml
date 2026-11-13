@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ch_alarms">Alarme</string>
+    <string name="ch_alarms_desc">Alarme für Insulindosen und Zuckermessungen</string>
+    <string name="ch_emergency">Notfallinformationen</string>
+    <string name="ch_emergency_desc">Ihre medizinischen Daten auf dem Sperrbildschirm</string>
+    <string name="medical_info">Medizinische Info</string>
+    <string name="saved_downloads">In Downloads gespeichert: %1$s</string>
+    <string name="saved_at">Gespeichert: %1$s</string>
+    <string name="save_failed">Datei konnte nicht gespeichert werden: %1$s</string>
+</resources>

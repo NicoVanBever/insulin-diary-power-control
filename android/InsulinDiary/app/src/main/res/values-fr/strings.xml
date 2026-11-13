@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ch_alarms">Alarmes</string>
+    <string name="ch_alarms_desc">Alarmes de doses d\'insuline et de contrôles de glycémie</string>
+    <string name="ch_emergency">Informations d\'urgence</string>
+    <string name="ch_emergency_desc">Vos informations médicales sur l\'écran de verrouillage</string>
+    <string name="medical_info">Infos médicales</string>
+    <string name="saved_downloads">Enregistré dans Téléchargements : %1$s</string>
+    <string name="saved_at">Enregistré : %1$s</string>
+    <string name="save_failed">Impossible d\'enregistrer le fichier : %1$s</string>
+</resources>

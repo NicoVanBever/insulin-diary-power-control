@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ch_alarms">Alarms</string>
+    <string name="ch_alarms_desc">Insulin dose and glucose-check alarms</string>
+    <string name="ch_emergency">Emergency information</string>
+    <string name="ch_emergency_desc">Your medical information on the lock screen</string>
+    <string name="medical_info">Medical info</string>
+    <string name="saved_downloads">Saved to Downloads: %1$s</string>
+    <string name="saved_at">Saved: %1$s</string>
+    <string name="save_failed">Couldn\'t save the file: %1$s</string>
+</resources>
