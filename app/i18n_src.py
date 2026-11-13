@@ -835,6 +835,24 @@ T = [
 ("Your PC found this phone. Syncing…", "Uw pc heeft deze telefoon gevonden. Synchroniseren…", "Votre PC a trouvé ce téléphone. Synchronisation…", "Ihr PC hat dieses Handy gefunden. Synchronisiere…"),
 ("The PC stopped answering. Try again.", "De pc reageert niet meer. Probeer het opnieuw.", "Le PC ne répond plus. Réessayez.", "Der PC antwortet nicht mehr. Versuchen Sie es erneut."),
 
+
+("Install the phone app without a network", "Telefoonapp installeren zonder netwerk", "Installer l'app mobile sans réseau", "Handy-App ohne Netzwerk installieren"),
+("The phone app is built into this program, so no internet or Wi-Fi is needed.", "De telefoonapp zit in dit programma, dus internet of wifi is niet nodig.", "L'app mobile est intégrée à ce programme : ni internet ni Wi-Fi ne sont nécessaires.", "Die Handy-App ist in diesem Programm enthalten, Internet oder WLAN sind nicht nötig."),
+("Click", "Klik op", "Cliquez sur", "Klicken Sie auf"),
+("Show the phone app file", "Bestand van de telefoonapp tonen", "Afficher le fichier de l'app mobile", "Datei der Handy-App anzeigen"),
+("Connect the phone with a USB cable and choose", "Sluit de telefoon aan met een USB-kabel en kies", "Branchez le téléphone avec un câble USB et choisissez", "Verbinden Sie das Handy per USB-Kabel und wählen Sie"),
+("File transfer", "Bestandsoverdracht", "Transfert de fichiers", "Dateiübertragung"),
+("on the phone.", "op de telefoon.", "sur le téléphone.", "am Handy."),
+("Copy the file to the phone's", "Kopieer het bestand naar de map", "Copiez le fichier dans le dossier", "Kopieren Sie die Datei in den Ordner"),
+("Download", "Download", "Download", "Download"),
+("folder.", "van de telefoon.", "du téléphone.", "des Handys."),
+("On the phone, open the file (Files → Downloads) and tap", "Open het bestand op de telefoon (Bestanden → Downloads) en tik op", "Sur le téléphone, ouvrez le fichier (Fichiers → Téléchargements) et touchez", "Öffnen Sie die Datei am Handy (Dateien → Downloads) und tippen Sie auf"),
+("Install", "Installeren", "Installer", "Installieren"),
+(". If Android asks, allow installing apps from this source.", ". Vraagt Android erom, sta dan installeren uit deze bron toe.", ". Si Android le demande, autorisez l'installation depuis cette source.", ". Wenn Android fragt, erlauben Sie die Installation aus dieser Quelle."),
+("No cable? Turn on this PC's mobile hotspot, connect the phone to it and scan the code with the phone's camera.", "Geen kabel? Zet de mobiele hotspot van deze pc aan, verbind de telefoon ermee en scan de code met de camera van de telefoon.", "Pas de câble ? Activez le point d'accès mobile de ce PC, connectez-y le téléphone et scannez le code avec l'appareil photo du téléphone.", "Kein Kabel? Schalten Sie den mobilen Hotspot dieses PCs ein, verbinden Sie das Handy damit und scannen Sie den Code mit der Handykamera."),
+("Saved and opened in File Explorer:", "Opgeslagen en geopend in Verkenner:", "Enregistré et ouvert dans l'Explorateur de fichiers :", "Gespeichert und im Explorer geöffnet:"),
+("Couldn't save the phone app file.", "Kon het bestand van de telefoonapp niet opslaan.", "Impossible d'enregistrer le fichier de l'app mobile.", "Die Datei der Handy-App konnte nicht gespeichert werden."),
+
 ]
 
 out = {}

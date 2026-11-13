@@ -31,3 +31,5 @@ func main() {
 	fmt.Println("serving http://127.0.0.1:" + localPort + "/ data in " + dir)
 	_ = (&http.Server{Handler: app.localHandler(), ReadHeaderTimeout: 10 * time.Second}).Serve(ln)
 }
+
+func revealFile(path string) {}

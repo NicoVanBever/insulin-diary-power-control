@@ -103,6 +103,7 @@ func (a *App) localHandler() http.Handler {
 	mux.HandleFunc("/api/sync/poll", a.handlePoll)
 	mux.HandleFunc("/api/sync/reply", a.handleReply)
 	mux.HandleFunc("/api/net", a.handleNet)
+	mux.HandleFunc("/api/phoneapp", a.handlePhoneApp)
 	mux.HandleFunc("/api/net/fix", a.handleNetFix)
 	mux.HandleFunc("/api/autostart", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {

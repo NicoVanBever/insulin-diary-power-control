@@ -488,3 +488,9 @@ func regDeleteTree(path string) {
 	k, _ := syscall.UTF16PtrFromString(path)
 	advapi32.NewProc("RegDeleteTreeW").Call(uintptr(syscall.HKEY_CURRENT_USER), uintptr(unsafe.Pointer(k)))
 }
+
+// revealFile opens File Explorer with the file selected.
+func revealFile(path string) {
+	cmd := exec.Command("explorer.exe", "/select,"+path)
+	_ = cmd.Start()
+}

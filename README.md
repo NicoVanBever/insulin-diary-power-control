@@ -16,8 +16,10 @@ Made by **NeQo**. Public domain ([The Unlicense](UNLICENSE)).
 
 Go to **[Releases](../../releases/latest)**:
 
-- **Insulin Diary Power Control.exe**: Windows 10/11. Run it to install or update (no administrator rights needed). The Android app is included: open **Sync with phone** and point your phone's camera at the QR code to install it.
-- **InsulinDiary.apk**: the Android app (8.0 and newer), if you'd rather install it directly.
+- **Insulin Diary Power Control.exe**: Windows 10/11. Run it to install or update (no administrator rights needed). The Android app is built in. Open **Sync with phone** to put it on your phone in any of these ways:
+  - scan the QR code with the phone's camera (same Wi-Fi, a hotspot or USB tethering);
+  - **Show the phone app file** and copy it to the phone with a USB cable (no network or internet needed);
+  - phones that already have the app are offered the newer version when they sync.
 
 The files are not signed with a paid certificate, so Windows SmartScreen and Google Play Protect will warn you once. Choose **More info → Run anyway** or **Install anyway**.
 

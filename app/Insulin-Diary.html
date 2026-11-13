@@ -367,6 +367,11 @@ input,select{accent-color:var(--accent)}
             <ol style="margin:0;padding-left:20px;line-height:1.6"><li>Phone and PC on the <b>same network</b>: the same Wi-Fi or router (the PC may use a cable), the PC's mobile hotspot, the phone's hotspot, or the phone connected to the PC by USB cable with <b>USB tethering</b> switched on.</li><li><b>No app on the phone yet?</b> Point the phone's camera at the code. A page from this PC opens where you can download and install the app.</li><li><b>App installed?</b> In the app: <b>Sync</b> → <b>Scan code on PC</b>. Each side sends what the other is missing. If this PC has a newer version of the phone app, the phone offers to update.</li></ol>
             <p class="lbl" style="margin:10px 0 0">Every code is unique and carries its own 256-bit key, made from this PC's private key. Everything sent between phone and PC is encrypted with it (AES-256-GCM); the key itself never travels over the network. A code works for one sync and changes every 5 minutes. No account, no cloud. The first time, Windows may ask whether to allow Insulin Diary on your network: choose <b>Private networks</b> and click Allow.</p></div>
           <div class="card"><h3>No shared network?</h3><p class="lbl" style="margin:0 0 10px">Move your diary with a file instead. Save a diary file here, copy it to the other device (USB cable, e-mail to yourself or a cloud drive) and open it there with <b>Merge a diary file</b>. Then do the same the other way round. Entries from both sides are kept.</p><div class="row"><button class="btn fsave">Save diary file</button><button class="btn fmerge">Merge a diary file…</button></div></div>
+          <div class="card"><h3>Install the phone app without a network</h3>
+            <p class="lbl" style="margin:0 0 8px">The phone app is built into this program, so no internet or Wi-Fi is needed.</p>
+            <ol style="margin:0;padding-left:20px;line-height:1.6"><li>Click <b>Show the phone app file</b>.</li><li>Connect the phone with a USB cable and choose <b>File transfer</b> on the phone.</li><li>Copy the file to the phone's <b>Download</b> folder.</li><li>On the phone, open the file (Files → Downloads) and tap <b>Install</b>. If Android asks, allow installing apps from this source.</li></ol>
+            <p class="lbl" style="margin:8px 0 10px">No cable? Turn on this PC's mobile hotspot, connect the phone to it and scan the code with the phone's camera.</p>
+            <button class="btn" id="apkShow">Show the phone app file</button><div class="lbl" id="apkWhere" style="margin-top:8px"></div></div>
           <div id="syncLast"></div>
         </div>
       </div>
@@ -1760,6 +1765,12 @@ async function newSyncCode() {
   } catch (e) { syncInfo = null; $('#qrBox').innerHTML = ''; $('#syncStatus').textContent = "Couldn't prepare a sync code. Restart Insulin Diary and try again."; }
 }
 $('#newCode').addEventListener('click', newSyncCode);
+$('#apkShow').addEventListener('click', async () => {
+  try {
+    const r = await (await fetch('/api/phoneapp', { method: 'POST' })).json();
+    $('#apkWhere').innerHTML = r.path ? `Saved and opened in File Explorer: <b>${esc(r.path)}</b>` : esc(r.error || '');
+  } catch (e) { $('#apkWhere').textContent = "Couldn't save the phone app file."; }
+});
 async function syncTick() {
   if (!syncInfo || syncBusy) return;
   const left = Math.max(0, Math.round((syncInfo.expires - Date.now()) / 1000));
