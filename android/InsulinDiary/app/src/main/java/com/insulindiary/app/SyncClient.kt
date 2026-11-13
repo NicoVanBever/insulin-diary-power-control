@@ -2,6 +2,12 @@ package com.insulindiary.app
 
 import org.json.JSONObject
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.SocketTimeoutException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -21,7 +27,11 @@ import javax.crypto.spec.SecretKeySpec
  */
 object SyncClient {
 
-    data class Code(val ips: List<String>, val port: Int, val id: String, val key: ByteArray, val diaryId: String)
+    /** prefixes: network size of each PC address (same order as ips); reverse: the PC can connect back to the phone. */
+    data class Code(val ips: List<String>, val port: Int, val id: String, val key: ByteArray, val diaryId: String,
+                    val prefixes: List<Int> = emptyList(), val reverse: Boolean = false)
+
+    const val REVERSE_PORT = 47623
 
     fun err(msg: String): String = JSONObject().put("ok", false).put("error", msg).toString()
 
@@ -38,6 +48,8 @@ object SyncClient {
         else Code(
             ips = listOf(u.host) + (frag["i"] ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
             port = if (u.port > 0) u.port else 47622, id = parts[1], key = key, diaryId = normId(frag["d"] ?: ""),
+            prefixes = (frag["m"] ?: "").split(",").mapNotNull { it.trim().toIntOrNull() },
+            reverse = frag["r"] == "1",
         )
     } catch (e: Exception) { null }
 
@@ -70,12 +82,12 @@ object SyncClient {
         }
         progress("Connecting to your PC…")
         val body = seal(code.key, "req|" + code.id, state.toByteArray(Charsets.UTF_8))
-        for (ip in code.ips) {
+        for (ip in code.ips.take(connectTries)) {
             var conn: HttpURLConnection? = null
             try {
                 val base = "http://$ip:${code.port}"
                 conn = URL("$base/s/${code.id}").openConnection() as HttpURLConnection
-                conn.connectTimeout = 4000
+                conn.connectTimeout = 3000
                 conn.readTimeout = 75000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
@@ -100,7 +112,102 @@ object SyncClient {
                 conn?.disconnect()
             }
         }
-        return err("Couldn't reach the PC. Check that the phone and the PC are on the same Wi-Fi, and that Windows allowed Insulin Diary on private networks.")
+        // No address answered. A newer PC can connect to the phone instead (incoming connections are what
+        // the Windows firewall blocks; its outgoing ones are allowed).
+        if (code.reverse) return reverseWait(code, body, device, appVersion, progress = progress)
+        return unreachable()
+    }
+
+    /** Test hook: how many PC addresses to try (all of them normally). */
+    var connectTries = Int.MAX_VALUE
+
+    fun unreachable(): String = JSONObject().put("ok", false).put("unreachable", true)
+        .put("error", "Couldn't reach the PC.").toString()
+
+    // ---------------------------------------------------------------- reverse connection
+
+    private class Req(val method: String, val path: String, val headers: Map<String, String>, val body: ByteArray)
+
+    private fun readRequest(input: InputStream): Req? {
+        fun line(): String? {
+            val sb = StringBuilder()
+            while (true) {
+                val c = input.read(); if (c < 0) return if (sb.isEmpty()) null else sb.toString()
+                if (c == '\n'.code) return sb.toString().trimEnd('\r')
+                sb.append(c.toChar()); if (sb.length > 8192) return null
+            }
+        }
+        val first = line() ?: return null
+        val p = first.split(" "); if (p.size < 2) return null
+        val h = mutableMapOf<String, String>()
+        while (true) {
+            val l = line() ?: return null
+            if (l.isEmpty()) break
+            val i = l.indexOf(':'); if (i > 0) h[l.substring(0, i).trim().lowercase()] = l.substring(i + 1).trim()
+            if (h.size > 50) return null
+        }
+        val len = h["content-length"]?.toIntOrNull() ?: 0
+        if (len < 0 || len > 256 * 1024 * 1024) return null
+        val body = ByteArray(len); var got = 0
+        while (got < len) { val n = input.read(body, got, len - got); if (n < 0) return null; got += n }
+        return Req(p[0], p[1], h, body)
+    }
+
+    private fun respond(out: OutputStream, status: Int, body: ByteArray, type: String, extra: Map<String, String> = emptyMap()) {
+        val head = StringBuilder("HTTP/1.1 $status ${if (status == 200) "OK" else "Error"}\r\n")
+            .append("Content-Type: $type\r\nContent-Length: ${body.size}\r\nConnection: close\r\nCache-Control: no-store\r\n")
+        extra.forEach { (k, v) -> head.append("$k: $v\r\n") }
+        head.append("\r\n")
+        out.write(head.toString().toByteArray(Charsets.ISO_8859_1)); out.write(body); out.flush()
+    }
+
+    /**
+     * Waits (on port 47623) for the PC to connect to this phone. Hands over the encrypted diary only for
+     * the code that was scanned, then waits for the PC's encrypted answer from that same address.
+     */
+    fun reverseWait(code: Code, body: ByteArray, device: String, appVersion: Int, waitMs: Long = 60_000, progress: (String) -> Unit = {}): String {
+        val server = try {
+            ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(REVERSE_PORT)); soTimeout = 1000 }
+        } catch (e: Exception) { return unreachable() }
+        progress("The PC can't be reached directly. Waiting for the PC to connect to this phone… keep the sync screen open on the PC.")
+        var deadline = System.currentTimeMillis() + waitMs
+        var pcAddr: InetAddress? = null
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                val sock = try { server.accept() } catch (e: SocketTimeoutException) { continue } catch (e: Exception) { break }
+                sock.use { s ->
+                    s.soTimeout = 75_000
+                    val req = try { readRequest(s.getInputStream()) } catch (e: Exception) { null } ?: return@use
+                    val out = s.getOutputStream()
+                    if (req.path != "/r/${code.id}" || (pcAddr != null && s.inetAddress != pcAddr)) {
+                        respond(out, 404, ByteArray(0), "text/plain"); return@use
+                    }
+                    if (req.method == "GET") {
+                        respond(out, 200, body, "application/octet-stream", mapOf(
+                            "X-Insulin-Diary" to "1",
+                            "X-Device" to device.filter { it.code in 32..126 }.take(60),
+                            "X-App-Version" to appVersion.toString()))
+                        pcAddr = s.inetAddress
+                        deadline = System.currentTimeMillis() + 80_000
+                        progress("Your PC found this phone. Syncing…")
+                    } else if (req.method == "POST" && pcAddr != null) {
+                        respond(out, 200, "ok".toByteArray(), "text/plain")
+                        val type = req.headers["content-type"] ?: ""
+                        val text = if (type.startsWith("application/octet-stream")) {
+                            try { String(open(code.key, "res|" + code.id, req.body), Charsets.UTF_8) }
+                            catch (e: Exception) { return err("The PC's answer couldn't be verified. Make sure you scanned the code on your own PC.") }
+                        } else String(req.body, Charsets.UTF_8)
+                        if (text.isBlank()) return err("The PC answered with error ${req.headers["x-status"] ?: "?"}.")
+                        return try {
+                            // App updates are downloaded from the PC, which can't be reached directly here: skip the offer.
+                            JSONObject(text).put("base", "http://${pcAddr!!.hostAddress}:${code.port}").put("reverse", true)
+                                .also { it.remove("update") }.toString()
+                        } catch (e: Exception) { err("The PC sent an unreadable answer.") }
+                    } else respond(out, 404, ByteArray(0), "text/plain")
+                }
+            }
+        } finally { try { server.close() } catch (_: Exception) { } }
+        return if (pcAddr != null) err("The PC stopped answering. Try again.") else unreachable()
     }
 
     /** Downloads an update offered by the PC and checks it against the SHA-256 from the encrypted answer. */

@@ -362,19 +362,23 @@ input,select{accent-color:var(--accent)}
           <div class="lbl" id="syncMeta" style="text-align:center"></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Network check</h3><button class="btn sm" id="netAgain">Check again</button></div><div id="netBody" style="margin-top:10px"></div></div>
           <div class="card"><h3>How syncing works</h3>
-            <ol style="margin:0;padding-left:20px;line-height:1.6"><li>Phone and PC on the <b>same Wi-Fi</b>.</li><li><b>No app on the phone yet?</b> Point the phone's camera at the code. A page from this PC opens where you can download and install the app.</li><li><b>App installed?</b> In the app: <b>Sync</b> → <b>Scan code on PC</b>. Each side sends what the other is missing. If this PC has a newer version of the phone app, the phone offers to update.</li></ol>
+            <ol style="margin:0;padding-left:20px;line-height:1.6"><li>Phone and PC on the <b>same network</b>: the same Wi-Fi or router (the PC may use a cable), the PC's mobile hotspot, the phone's hotspot, or the phone connected to the PC by USB cable with <b>USB tethering</b> switched on.</li><li><b>No app on the phone yet?</b> Point the phone's camera at the code. A page from this PC opens where you can download and install the app.</li><li><b>App installed?</b> In the app: <b>Sync</b> → <b>Scan code on PC</b>. Each side sends what the other is missing. If this PC has a newer version of the phone app, the phone offers to update.</li></ol>
             <p class="lbl" style="margin:10px 0 0">Every code is unique and carries its own 256-bit key, made from this PC's private key. Everything sent between phone and PC is encrypted with it (AES-256-GCM); the key itself never travels over the network. A code works for one sync and changes every 5 minutes. No account, no cloud. The first time, Windows may ask whether to allow Insulin Diary on your network: choose <b>Private networks</b> and click Allow.</p></div>
+          <div class="card"><h3>No shared network?</h3><p class="lbl" style="margin:0 0 10px">Move your diary with a file instead. Save a diary file here, copy it to the other device (USB cable, e-mail to yourself or a cloud drive) and open it there with <b>Merge a diary file</b>. Then do the same the other way round. Entries from both sides are kept.</p><div class="row"><button class="btn fsave">Save diary file</button><button class="btn fmerge">Merge a diary file…</button></div></div>
           <div id="syncLast"></div>
         </div>
       </div>
     </div>
     <div id="syncPhone" hidden>
       <button class="btn primary bigbtn" id="scanBtn">Scan code on PC</button>
-      <div class="card" style="margin-top:12px"><ol style="margin:0;padding-left:20px;line-height:1.6"><li>On your PC, open Insulin Diary → <b>Sync with phone</b>.</li><li>Keep this phone on the <b>same Wi-Fi</b> as the PC.</li><li>Scan the code. New entries go both ways.</li></ol></div>
+      <div class="card" style="margin-top:12px"><ol style="margin:0;padding-left:20px;line-height:1.6"><li>On your PC, open Insulin Diary → <b>Sync with phone</b>.</li><li>Keep this phone on the <b>same network</b> as the PC: the same Wi-Fi, a hotspot from one of them, or a USB cable with USB tethering on.</li><li>Scan the code. New entries go both ways.</li></ol></div>
       <div id="syncMsg" style="margin-top:12px"></div>
       <div id="syncUpd" style="margin-top:12px"></div>
+      <div id="phoneNet" style="margin-top:12px"></div>
       <div id="syncLast2" style="margin-top:12px"></div>
+      <div style="margin-top:12px"><div class="card"><h3>No shared network?</h3><p class="lbl" style="margin:0 0 10px">Move your diary with a file instead. Save a diary file here, copy it to the other device (USB cable, e-mail to yourself or a cloud drive) and open it there with <b>Merge a diary file</b>. Then do the same the other way round. Entries from both sides are kept.</p><div class="row"><button class="btn fsave">Save diary file</button><button class="btn fmerge">Merge a diary file…</button></div></div></div>
       <div class="lbl" id="phoneMeta" style="margin-top:12px"></div>
     </div>
     <div id="syncNone" hidden>
@@ -513,6 +517,7 @@ input,select{accent-color:var(--accent)}
         <button class="btn primary" id="backupBtn">Save backup file</button>
         <button class="btn" id="restoreBtn">Restore from backup…</button>
         <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+        <input type="file" id="mergeFile" accept=".json,application/json" hidden>
         <button class="btn" id="csvBtn">Export CSV for doctor</button>
         <button class="btn" id="cgmBtn">Import CGM data (CSV)…</button>
         <input type="file" id="cgmFile" accept=".csv,.txt,text/csv" hidden>
@@ -544,7 +549,7 @@ input,select{accent-color:var(--accent)}
 "use strict";
 /* ---------------- storage ---------------- */
 const KEY = 'insulinDiary.v1';
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 const DONATE_URL = 'https://www.paypal.com/qrcodes/managed/3bc06491-cd2e-4cf0-8409-dce3e26597ed'; // NeQo's PayPal ("Buy me a coffee")
 const H = 3600e3, DAY = 24 * H;
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
@@ -1107,6 +1112,30 @@ $('#restoreFile').addEventListener('change', e => {
   };
   r.readAsText(f);
 });
+/* Sync by file: save on one device, merge on the other (nothing is replaced). */
+function saveDiaryFile() {
+  S.lastBackup = Date.now(); save();
+  download(`insulin-diary-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(S, null, 1), 'application/json'); renderAll();
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('.fsave')) saveDiaryFile();
+  else if (e.target.closest('.fmerge')) $('#mergeFile').click();
+});
+$('#mergeFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return; const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result); if (!Array.isArray(d.entries)) throw 0;
+      const had = new Set(S.entries.map(x => x.id));
+      S = mergeState(S, d);
+      const added = S.entries.filter(x => !had.has(x.id)).length;
+      noteSync('File', added, 0); save(); renderAll(); renderSyncLast();
+      alert(added === 1 ? 'Merged: 1 new entry added.' : `Merged: ${added} new entries added.`);
+    } catch (err) { alert('That file is not an Insulin Diary diary file or backup.'); }
+    e.target.value = '';
+  };
+  r.readAsText(f);
+});
 $('#wipeBtn').addEventListener('click', () => {
   if (!confirm('Delete ALL entries, your plan and settings from this computer?')) return;
   if (!confirm('Are you sure? Save a backup first if you might need this data. This cannot be undone.')) return;
@@ -1634,12 +1663,88 @@ function syncEnter() {
   $('#syncPc').hidden = PLATFORM !== 'windows'; $('#syncPhone').hidden = PLATFORM !== 'android'; $('#syncNone').hidden = PLATFORM !== 'browser';
   renderSyncLast();
   renderPhoneMeta();
+  renderPhoneNet();
   if (PLATFORM === 'windows') {
+    loadNet(false);
     if (!syncInfo || syncInfo.expires < Date.now() + 5000) newSyncCode();
     clearInterval(syncTimer); syncTimer = setInterval(syncTick, 1000);
   }
 }
 function syncLeave() { clearInterval(syncTimer); syncTimer = null; }
+
+/* ---------------- network check ---------------- */
+let netState = null, netBusy = false;
+const netKind = { wifi: 'Wi-Fi', ethernet: 'Network cable', hotspot: "This PC's hotspot", 'usb-phone': 'Phone by USB cable', usb: 'USB cable', bluetooth: 'Bluetooth', mobile: 'Mobile data', vpn: 'VPN', virtual: 'Virtual adapter', other: 'Network' };
+const fwType = p => p === 'DomainAuthenticated' ? 'Domain' : p;
+async function loadNet(fresh) {
+  if (netBusy) return; netBusy = true;
+  if (!netState) $('#netBody').innerHTML = '<div class="lbl">Checking this PC\'s network…</div>';
+  try { const r = await fetch('/api/net' + (fresh ? '?fresh=1' : ''), { cache: 'no-store' }); netState = await r.json(); } catch (e) { netState = null; }
+  netBusy = false; renderNet();
+}
+function netProblem(n) {
+  const fw = n && n.firewall; if (!fw) return null;
+  const used = [...new Set((n.adapters || []).map(a => fwType(a.profile)).filter(Boolean))];
+  const blocked = used.filter(t => fw.on[t] && (fw.blocked[t] || !fw.allowed[t]));
+  return blocked.length ? { blocked, publicNets: (n.adapters || []).filter(a => a.profile === 'Public') } : null;
+}
+function renderNet() {
+  const n = netState, el = $('#netBody'); if (!el) return;
+  if (!n) { el.innerHTML = '<div class="alert warn">Couldn\'t check the network.</div>'; return; }
+  const ad = n.adapters || [];
+  const prof = p => p === 'Private' ? '<span class="pill ok">Private (home)</span>' : p === 'Public' ? '<span class="pill warn">Public</span>' : p === 'DomainAuthenticated' ? '<span class="pill">Work network</span>' : '';
+  const rows = ad.map(a => `<div class="alrow"><span><b>${netKind[a.kind] || 'Network'}</b>${a.network ? ` · ${esc(a.network)}` : ''} <span class="muted">· ${esc(a.ip)}</span></span>${prof(a.profile)}</div>`).join('');
+  let verdict;
+  const pb = netProblem(n);
+  if (!ad.length) verdict = '<div class="alert bad"><b class="t">No network a phone can use</b>Connect this PC to your Wi-Fi or router, turn on the PC\'s mobile hotspot, or connect your phone by USB cable and turn on USB tethering on the phone. Or use a diary file (below).</div>';
+  else if (pb) verdict = `<div class="alert warn"><b class="t">The Windows firewall may block your phone</b>${pb.publicNets.length ? `Windows treats ${pb.publicNets.map(a => '"' + esc(a.network || a.name) + '"').join(', ')} as a <b>public</b> network, where it blocks incoming connections. ` : 'Insulin Diary isn\'t allowed to receive connections yet. '}Syncing still works: when the phone can't get through, this PC connects to the phone instead. It just takes a few seconds longer.
+      <div class="row" style="margin-top:10px">${n.canFix ? '<button class="btn primary" id="netFix">Fix it</button>' : ''}</div><div class="lbl" style="margin-top:6px">Fix it allows Insulin Diary on home networks${pb.publicNets.length ? ' and marks this network as private (home)' : ''}. Windows asks for administrator permission once.</div></div>`;
+  else if (n.firewall) verdict = '<div class="alert ok"><b class="t">Ready</b>Your phone can reach this PC.</div>';
+  else verdict = '';
+  const ign = (n.ignored || []);
+  const vpn = ign.some(a => a.kind === 'vpn');
+  el.innerHTML = rows + (verdict ? `<div style="margin-top:10px">${verdict}</div>` : '') +
+    (vpn ? '<div class="lbl" style="margin-top:8px">A VPN is on. If syncing fails, pause the VPN on this PC and on the phone.</div>' : '') +
+    (ign.length ? `<div class="lbl" style="margin-top:6px">Not used for syncing: ${ign.map(a => esc(a.name)).join(', ')}</div>` : '');
+}
+document.addEventListener('click', async e => {
+  if (e.target.closest('#netAgain')) loadNet(true);
+  if (!e.target.closest('#netFix')) return;
+  const pb = netProblem(netState) || { publicNets: [] };
+  let priv = pb.publicNets.map(a => a.index);
+  if (priv.length && !confirm(`Mark ${pb.publicNets.map(a => '"' + (a.network || a.name) + '"').join(', ')} as a private (home) network?\n\nOnly do this for your own home network, not for public Wi-Fi (café, hotel, hospital, work).`)) priv = [];
+  $('#netFix').disabled = true; $('#netFix').textContent = 'Waiting for Windows…';
+  let r = {}; try { r = await (await fetch('/api/net/fix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ private: priv }) })).json(); } catch (er) { r = { ok: false }; }
+  await loadNet(true);
+  if (r.ok) $('#netBody').insertAdjacentHTML('afterbegin', '<div class="alert ok" style="margin-bottom:10px">Done. Windows now lets your phone connect.</div>');
+  else $('#netBody').insertAdjacentHTML('afterbegin', `<div class="alert info" style="margin-bottom:10px">${r.cancelled ? 'Nothing was changed.' : 'Windows didn\'t allow the change.'} Syncing still works: the PC connects to the phone instead.</div>`);
+});
+function phoneNetText(n) {
+  const ip = (n.phone || []).find(a => a.kind === n.transport) || (n.phone || []).find(a => a.kind !== 'mobile' && a.kind !== 'vpn');
+  const t = n.transport;
+  return t === 'mobile' && !ip ? '<b>Mobile data</b> — not on Wi-Fi' : `<b>${netKind[t] || netKind[ip && ip.kind] || 'Network'}</b>${ip ? ' · ' + esc(ip.ip) : ''}${n.vpn ? ' · VPN' : ''}`;
+}
+function renderPhoneNet() {
+  if (PLATFORM !== 'android') return;
+  let n = null; try { n = JSON.parse(AndroidBridge.netInfo()); } catch (e) { }
+  if (!n) { $('#phoneNet').innerHTML = ''; return; }
+  const local = (n.phone || []).some(a => a.kind !== 'mobile' && a.kind !== 'vpn');
+  $('#phoneNet').innerHTML = `<div class="alert ${local ? 'info' : 'warn'}"><b class="t">This phone's network</b>${phoneNetText(n)}${local ? '' : '<br>Connect to the same Wi-Fi as your PC, or connect the PC to this phone\'s hotspot, or use a USB cable with USB tethering on.'}${n.vpn ? '<br>A VPN is on. If syncing fails, pause the VPN.' : ''}</div>`;
+}
+/* Why the phone couldn't reach the PC, from the phone's network check. */
+function netDiagnosis(n) {
+  if (!n) return 'Check that the phone and the PC are on the same network, then try again.';
+  const pc = (n.pc || []).join(', ');
+  const ph = ((n.phone || []).filter(a => a.kind !== 'mobile' && a.kind !== 'vpn').map(a => a.ip)).join(', ');
+  let m;
+  switch (n.verdict) {
+    case 'mobile': m = 'Your phone is on <b>mobile data</b>, not on Wi-Fi. Connect it to the same Wi-Fi as your PC (or connect the PC to this phone\'s hotspot) and scan again.'; break;
+    case 'none': m = 'Your phone isn\'t connected to any local network. Turn on Wi-Fi and connect to the same network as your PC, then scan again.'; break;
+    case 'different': m = `Your phone (${esc(ph)}) and your PC (${esc(pc)}) are on <b>different networks</b>. Connect both to the same Wi-Fi. A guest Wi-Fi keeps devices apart: use your main network.`; break;
+    default: m = `Phone and PC are on the same network (${esc(n.phoneIp || ph)} → ${esc(n.pcIp || pc)}), but they couldn't reach each other. Keep the PC on the <b>Sync with phone</b> screen and scan again. If it keeps failing: click <b>Fix it</b> under Network check on the PC, check that a security program isn't blocking Insulin Diary, or use the phone's hotspot or a USB cable. Some routers keep Wi-Fi devices apart ("client isolation").`;
+  }
+  return m + (n.vpn ? '<br>A VPN is on. If syncing fails, pause the VPN.' : '');
+}
 async function newSyncCode() {
   $('#syncStatus').textContent = 'Preparing a code…';
   try {
@@ -1710,6 +1815,7 @@ window.onSyncDone = () => {
     } else $('#syncMsg').innerHTML = '<div class="alert info"><b class="t">Not synced</b>The code belongs to a different diary.</div>';
     return;
   }
+  if (r && r.unreachable) { $('#syncMsg').innerHTML = `<div class="alert bad"><b class="t">Couldn't reach the PC</b>${netDiagnosis(r.net)}<br><span class="lbl">No way to connect? Use a diary file (below).</span></div>`; renderPhoneNet(); return; }
   if (!r || !r.ok) { $('#syncMsg').innerHTML = `<div class="alert ${r && r.cancelled ? 'info' : 'bad'}"><b class="t">${r && r.cancelled ? 'Scan cancelled' : 'Sync didn\'t work'}</b>${esc((r && r.error) || '')}</div>`; return; }
   S = mergeState(S, r.state || {});
   const st = r.stats || {}; noteSync(r.host || 'PC', st.received || 0, st.sent || 0); save(); renderAll();

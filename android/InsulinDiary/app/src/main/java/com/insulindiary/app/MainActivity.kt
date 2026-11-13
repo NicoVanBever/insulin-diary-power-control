@@ -247,6 +247,10 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun pairedId(): String = syncPrefs.getString("diaryId", "") ?: ""
 
+        /** This phone's network right now (for the sync screen). */
+        @JavascriptInterface
+        fun netInfo(): String = NetCheck.report(this@MainActivity, emptyList(), emptyList()).toString()
+
         @JavascriptInterface
         fun installUpdate() = runOnUiThread { startUpdate() }
 
@@ -289,9 +293,13 @@ class MainActivity : ComponentActivity() {
         val paired = if (checkPairing) syncPrefs.getString("diaryId", null) else null
         val version = appVersionCode()
         thread {
-            val result = SyncClient.sync(raw, state, device, version, paired) { progress(it) }
+            var result = SyncClient.sync(raw, state, device, version, paired) { progress(it) }
             try {
                 val r = JSONObject(result)
+                if (r.optBoolean("unreachable")) { // explain why: what the phone is connected to vs. the PC's networks
+                    val code = SyncClient.parse(raw)
+                    if (code != null) result = r.put("net", NetCheck.report(this, code.ips, code.prefixes)).toString()
+                }
                 if (r.optBoolean("ok")) {
                     lastScan = null
                     r.optString("diaryId").takeIf { it.isNotEmpty() }?.let { syncPrefs.edit().putString("diaryId", SyncClient.normId(it)).apply() }

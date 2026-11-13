@@ -1,6 +1,6 @@
 # Insulin Diary Power Control
 
-A free glucose and insulin diary for people with **type 1 or type 2 diabetes**, for **Windows** and **Android**, with private phone ↔ PC sync over your own Wi-Fi. No account, no cloud, no ads, no tracking.
+A free glucose and insulin diary for people with **type 1 or type 2 diabetes**, for **Windows** and **Android**, with private phone ↔ PC sync over your own network (Wi-Fi, hotspot or USB cable). No account, no cloud, no ads, no tracking.
 
 Made by **NeQo**. Public domain ([The Unlicense](UNLICENSE)).
 
@@ -31,6 +31,7 @@ The files are not signed with a paid certificate, so Windows SmartScreen and Goo
 - **Trends**: time in range, estimated HbA1c (GMI), patterns by time of day, low-pattern alerts, tag comparison, lab-result charts, CGM import (LibreView / Dexcom Clarity CSV).
 - **Doctor's visit summary**: a one-page, 90-day PDF.
 - **Emergency card**: on screen, as a printable wallet card, or on the Android lock screen.
+- **Sync**: phone ↔ PC over Wi-Fi, a hotspot or a USB cable, with a network check on both sides; or by file.
 - **Your look**: light / dark / follow system, your own accent and background colours, text size 80–150 %.
 - **Languages**: English, Nederlands, Français, Deutsch.
 
@@ -44,6 +45,13 @@ The QR code on the PC does two things. Scanned with the **phone's camera**, it o
 - Every QR code carries a fresh 256-bit key derived from it (HMAC-SHA256). It sits after `#` in the link, which browsers never send, so the key never travels over the network.
 - Everything between phone and PC is encrypted and authenticated with **AES-256-GCM**. A code works for one sync and changes every 5 minutes.
 - App updates are verified against a SHA-256 hash sent inside the encrypted answer; Android additionally checks the app signature.
+
+**Works on more than one kind of network.** Phone and PC only need to share a network: the same Wi-Fi or router (the PC may be on a cable), the PC's mobile hotspot, the phone's hotspot, or a USB cable with USB tethering on. The QR code lists every usable PC address (VPN and virtual adapters such as VirtualBox or Hyper-V are left out), so the phone tries them all.
+
+- **Network check on the PC**: shows each connection, whether Windows treats it as a *Public* or *Private* network, and whether the Windows firewall lets the phone in. **Fix it** allows Insulin Diary on home networks and can mark your home network as Private (Windows asks for administrator permission once).
+- **Network check on the phone**: if the PC can't be reached, the phone says why: on mobile data, on a different Wi-Fi, a VPN is on, or the router keeps devices apart.
+- **Reverse connection**: when the firewall blocks the phone, the phone waits and the PC connects to the phone instead (outgoing connections aren't blocked). Same encryption, same one-time code; no administrator rights needed.
+- **No shared network at all?** Save a diary file on one device and use **Merge a diary file** on the other; entries from both sides are kept.
 
 ## Where data is stored
 

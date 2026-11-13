@@ -28,6 +28,56 @@ class SyncClientTest {
         assertNull(SyncClient.parse("https://example.com/p/x#k=$k"))
         assertNull(SyncClient.parse("http://1.2.3.4:47622/p/x#k=short"))
         assertFalse(JSONObject(SyncClient.sync("hello", "{}", "Phone", 1, null)).getBoolean("ok"))
+        val c2 = SyncClient.parse("http://192.168.1.5:47622/p/abc123#k=$k&d=AB&i=10.0.0.2&m=24,16&r=1")!!
+        assertEquals(listOf(24, 16), c2.prefixes); assertTrue(c2.reverse); assertFalse(c.reverse)
+    }
+
+    /** The PC can't be reached: the phone waits and the "PC" connects to it (reverse connection). */
+    @Test fun reverseConnection() {
+        val key = ByteArray(32) { 3 }
+        val k = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)
+        // 192.0.2.x is a documentation address nobody answers on
+        val raw = "http://192.0.2.1:47622/p/rev42#k=$k&d=AB&r=1"
+        SyncClient.connectTries = 1
+        var got = ""
+        val pc = thread {
+            var c: HttpURLConnection? = null
+            repeat(100) {
+                try {
+                    Thread.sleep(200)
+                    // a wrong code id is refused
+                    val bad = URL("http://127.0.0.1:${SyncClient.REVERSE_PORT}/r/other").openConnection() as HttpURLConnection
+                    if (bad.responseCode != 404) throw AssertionError("wrong id answered")
+                    c = URL("http://127.0.0.1:${SyncClient.REVERSE_PORT}/r/rev42").openConnection() as HttpURLConnection
+                    if (c!!.responseCode == 200) {
+                        assertEquals("1", c!!.getHeaderField("X-Insulin-Diary"))
+                        got = String(SyncClient.open(key, "req|rev42", c!!.inputStream.readBytes()))
+                        val ans = JSONObject().put("ok", true).put("host", "PC").put("state", JSONObject().put("entries", JSONArray()))
+                            .put("update", JSONObject().put("versionCode", 99))
+                        val post = URL("http://127.0.0.1:${SyncClient.REVERSE_PORT}/r/rev42").openConnection() as HttpURLConnection
+                        post.requestMethod = "POST"; post.doOutput = true
+                        post.setRequestProperty("Content-Type", "application/octet-stream")
+                        post.outputStream.use { it.write(SyncClient.seal(key, "res|rev42", ans.toString().toByteArray())) }
+                        assertEquals(200, post.responseCode)
+                        return@thread
+                    }
+                } catch (e: java.net.ConnectException) { }
+            }
+        }
+        val r = JSONObject(SyncClient.sync(raw, phone, "Pixel", 6, null))
+        pc.join()
+        SyncClient.connectTries = Int.MAX_VALUE
+        assertTrue(r.toString(), r.getBoolean("ok"))
+        assertTrue(r.getBoolean("reverse")); assertFalse(r.has("update"))
+        assertEquals(phone, got)
+    }
+
+    @Test fun unreachableWithoutReverse() {
+        val k = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32))
+        SyncClient.connectTries = 1
+        val r = JSONObject(SyncClient.sync("http://192.0.2.1:47622/p/x1#k=$k&d=AB", phone, "Pixel", 6, null))
+        SyncClient.connectTries = Int.MAX_VALUE
+        assertFalse(r.getBoolean("ok")); assertTrue(r.getBoolean("unreachable"))
     }
 
     @Test fun encryptionRoundTripAndTamper() {
@@ -70,6 +120,26 @@ class SyncClientTest {
     }
 
     private val phone = JSONObject().put("entries", JSONArray().put(JSONObject().put("id", "ph1").put("type", "glucose").put("ts", 1).put("value", 99))).toString()
+
+    /** Firewall case against the real PC program: the phone can't reach it, so the PC connects to the phone. */
+    @Test fun reverseAgainstPcProgram() {
+        assumeTrue(System.getenv("SYNC_SERVER") == "1")
+        val url = JSONObject(local("/api/sync/open", "POST").second).getString("url")
+        assertTrue(url, url.contains("&r=1") && url.contains("&m="))
+        val blocked = url.replace("http://127.0.0.1:", "http://192.0.2.1:").substringBefore("&i=")
+        val seen = mutableListOf<JSONObject>()
+        val pc = pcWindow(seen)
+        val progress = mutableListOf<String>()
+        SyncClient.connectTries = 1
+        val r = JSONObject(SyncClient.sync(blocked, phone, "Reverse Phone", 6, null) { progress.add(it) })
+        SyncClient.connectTries = Int.MAX_VALUE
+        pc.join()
+        assertTrue(r.toString(), r.getBoolean("ok"))
+        assertTrue(r.getBoolean("reverse"))
+        assertEquals("Reverse Phone", seen[0].getString("device"))
+        assertEquals(2, r.getJSONObject("state").getJSONArray("entries").length())
+        assertTrue(progress.toString(), progress.any { it.startsWith("Your PC found this phone") })
+    }
 
     @Test fun fullEncryptedSyncWithUpdateOffer() {
         assumeTrue(System.getenv("SYNC_SERVER") == "1")

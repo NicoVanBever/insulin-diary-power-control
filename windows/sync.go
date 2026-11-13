@@ -15,6 +15,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -34,6 +35,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -168,6 +170,11 @@ func (a *App) handleOpen(w http.ResponseWriter, r *http.Request) {
 		if len(ips) > 1 {
 			url += "&i=" + strings.Join(ips[1:], ",")
 		}
+		var m []string
+		for _, p := range prefixes() {
+			m = append(m, strconv.Itoa(p))
+		}
+		url += "&m=" + strings.Join(m, ",") + "&r=1" // network sizes (for the phone's network check); PC can connect back
 	}
 	writeJSON(w, 200, map[string]any{
 		"url": url, "ips": ips, "port": lanPort, "expiresIn": int(codeLife.Seconds()),
@@ -190,6 +197,7 @@ func (a *App) startLAN() error {
 	mux.HandleFunc("/s/", a.handleSync)
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
+	go a.reverseLoop()
 	return nil
 }
 
@@ -243,24 +251,38 @@ func (a *App) handleUpdateDownload(w http.ResponseWriter, r *http.Request) {
 	serveAPK(w)
 }
 
-// POST /s/<code id> – encrypted sync.
+// POST /s/<code id> – encrypted sync (the phone connects to the PC).
 func (a *App) handleSync(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/s/")
 	if r.Method != http.MethodPost {
 		http.Error(w, "method", 405)
 		return
 	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBody))
+	if err != nil {
+		return
+	}
+	status, ctype, out := a.runSync(r.Context(), id, body, r.Header.Get("X-Device"), r.Header.Get("X-App-Version"))
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_, _ = w.Write(out)
+}
+
+func jsonErr(status int, msg string) (int, string, []byte) {
+	b, _ := json.Marshal(map[string]any{"ok": false, "error": msg})
+	return status, "application/json", b
+}
+
+// runSync unlocks the phone's diary, hands it to the PC window, waits for the merged answer and
+// returns it encrypted. Used for both directions of connection (phone → PC and PC → phone).
+func (a *App) runSync(ctx context.Context, id string, body []byte, dev, verS string) (int, string, []byte) {
 	s := a.sessionFor(id, true)
 	if s == nil {
 		a.mu.Lock()
 		a.bad++
 		a.mu.Unlock()
-		writeJSON(w, 403, map[string]any{"ok": false, "error": "This code has expired or was already used. Scan the new code on your PC."})
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxBody))
-	if err != nil {
-		return
+		return jsonErr(403, "This code has expired or was already used. Scan the new code on your PC.")
 	}
 	plain, err := open(s.key, "req|"+s.id, body)
 	if err != nil || !json.Valid(plain) {
@@ -270,21 +292,18 @@ func (a *App) handleSync(w http.ResponseWriter, r *http.Request) {
 			a.current = "" // too many failed attempts: the PC shows a new code
 		}
 		a.mu.Unlock()
-		writeJSON(w, 403, map[string]any{"ok": false, "error": "The data couldn't be unlocked with this code. Scan the newest code on your PC."})
-		return
+		return jsonErr(403, "The data couldn't be unlocked with this code. Scan the newest code on your PC.")
 	}
 	a.mu.Lock()
 	if s.used || (a.pend != nil && time.Since(a.pend.created) < 2*time.Minute) {
 		a.mu.Unlock()
-		writeJSON(w, 409, map[string]any{"ok": false, "error": "The PC is busy with another sync. Try again in a moment."})
-		return
+		return jsonErr(409, "The PC is busy with another sync. Try again in a moment.")
 	}
 	s.used = true
-	dev := r.Header.Get("X-Device")
 	if len(dev) > 60 {
 		dev = dev[:60]
 	}
-	ver, _ := strconv.Atoi(r.Header.Get("X-App-Version"))
+	ver, _ := strconv.Atoi(verS)
 	p := &pending{id: randHex(8), device: dev, appVersion: ver, state: plain, reply: make(chan replyMsg, 1), created: time.Now()}
 	a.pend = p
 	a.mu.Unlock()
@@ -300,10 +319,9 @@ func (a *App) handleSync(w http.ResponseWriter, r *http.Request) {
 	select {
 	case rep = <-p.reply:
 	case <-time.After(60 * time.Second):
-		writeJSON(w, 504, map[string]any{"ok": false, "error": "The PC didn't answer. Keep Insulin Diary open on the \"Sync with phone\" screen and try again."})
-		return
-	case <-r.Context().Done():
-		return
+		return jsonErr(504, "The PC didn't answer. Keep Insulin Diary open on the \"Sync with phone\" screen and try again.")
+	case <-ctx.Done():
+		return jsonErr(499, "cancelled")
 	}
 
 	host, _ := os.Hostname()
@@ -324,9 +342,88 @@ func (a *App) handleSync(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	plainOut, _ := json.Marshal(out)
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(seal(s.key, "res|"+s.id, plainOut))
+	return 200, "application/octet-stream", seal(s.key, "res|"+s.id, plainOut)
+}
+
+// ---------- reverse connection ----------
+//
+// When the phone can't reach the PC (usually the Windows firewall, which blocks incoming connections but
+// not outgoing ones), the phone waits on port 47623 instead. While the sync screen is open, the PC looks
+// for it on its own networks and connects out to it:
+//   GET  http://<phone>:47623/r/<code id>   → the phone's encrypted diary (only for the code it scanned)
+//   POST http://<phone>:47623/r/<code id>   ← the PC's encrypted answer
+// The data is exactly what would have gone the other way, encrypted with the same one-time key.
+
+const revPort = "47623"
+
+func (a *App) reverseLoop() {
+	for {
+		time.Sleep(4 * time.Second)
+		a.mu.Lock()
+		s := a.sessions[a.current]
+		active := time.Since(a.lastPoll) < 4*time.Second && s != nil && !s.used && a.pend == nil && time.Since(s.created) < codeLife
+		a.mu.Unlock()
+		if active {
+			a.reverseScan(s)
+		}
+	}
+}
+
+func (a *App) reverseScan(s *session) {
+	var (
+		mu   sync.Mutex
+		hits []string
+		wg   sync.WaitGroup
+	)
+	sem := make(chan struct{}, 96)
+	for _, ip := range scanTargets() {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(ip string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			c, err := net.DialTimeout("tcp", net.JoinHostPort(ip, revPort), 350*time.Millisecond)
+			if err != nil {
+				return
+			}
+			c.Close()
+			mu.Lock()
+			hits = append(hits, ip)
+			mu.Unlock()
+		}(ip)
+	}
+	wg.Wait()
+	for _, ip := range hits {
+		if a.reverseSync(ip, s) {
+			return
+		}
+	}
+}
+
+var revClient = &http.Client{Timeout: 70 * time.Second}
+
+// reverseSync returns true when the device at ip was the phone waiting for this code.
+func (a *App) reverseSync(ip string, s *session) bool {
+	base := "http://" + net.JoinHostPort(ip, revPort) + "/r/" + s.id
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Get(base)
+	if err != nil {
+		return false
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	resp.Body.Close()
+	if resp.StatusCode != 200 || resp.Header.Get("X-Insulin-Diary") != "1" { // another device, or a phone waiting for a different code
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+	defer cancel()
+	status, ctype, out := a.runSync(ctx, s.id, body, resp.Header.Get("X-Device"), resp.Header.Get("X-App-Version"))
+	req, _ := http.NewRequest(http.MethodPost, base, bytes.NewReader(out))
+	req.Header.Set("Content-Type", ctype)
+	req.Header.Set("X-Status", strconv.Itoa(status))
+	if r2, err := revClient.Do(req); err == nil {
+		r2.Body.Close()
+	}
+	return true
 }
 
 // GET /p/<code id> – what the phone's camera opens when the app isn't installed yet (in the phone's language).

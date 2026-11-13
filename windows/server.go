@@ -9,12 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -23,7 +21,7 @@ import (
 var page []byte
 
 const (
-	appVersion = "1.6"
+	appVersion = "1.7"
 	localPort  = "47621"
 	lanPort    = "47622"
 	maxBody    = 256 << 20
@@ -43,6 +41,10 @@ type App struct {
 	dls      map[string]time.Time // one-time update download links
 	lanOnce  sync.Once
 	lanErr   error
+
+	netCache *netCheck // last network check (sync screen)
+	netAt    time.Time
+	lastPoll time.Time // the sync screen asks every second while it is open
 }
 
 func newApp(dir string) *App {
@@ -100,6 +102,8 @@ func (a *App) localHandler() http.Handler {
 	mux.HandleFunc("/api/sync/open", a.handleOpen)
 	mux.HandleFunc("/api/sync/poll", a.handlePoll)
 	mux.HandleFunc("/api/sync/reply", a.handleReply)
+	mux.HandleFunc("/api/net", a.handleNet)
+	mux.HandleFunc("/api/net/fix", a.handleNetFix)
 	mux.HandleFunc("/api/autostart", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var in struct{ On bool }
@@ -189,48 +193,9 @@ func (a *App) saveData(b []byte) error {
 	return os.Rename(tmp, a.dataFile())
 }
 
-func privateIPs() []string {
-	if t := os.Getenv("ID_TEST_IPS"); t != "" { // used only by automated tests
-		return strings.Split(t, ",")
-	}
-	var out []string
-	ifs, _ := net.Interfaces()
-	for _, in := range ifs {
-		if in.Flags&net.FlagUp == 0 || in.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, _ := in.Addrs()
-		for _, ad := range addrs {
-			ipn, ok := ad.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ip := ipn.IP.To4()
-			if ip == nil || !ip.IsPrivate() {
-				continue
-			}
-			out = append(out, ip.String())
-		}
-	}
-	rank := func(s string) int {
-		switch {
-		case strings.HasPrefix(s, "192.168."):
-			return 0
-		case strings.HasPrefix(s, "10."):
-			return 1
-		default:
-			return 2
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return rank(out[i]) < rank(out[j]) })
-	if len(out) > 4 {
-		out = out[:4]
-	}
-	return out
-}
-
 func (a *App) handlePoll(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
+	a.lastPoll = time.Now()
 	p := a.pend
 	if p == nil || p.taken {
 		a.mu.Unlock()
