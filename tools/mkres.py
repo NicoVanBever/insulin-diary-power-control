@@ -32,9 +32,9 @@ def vs_versioninfo():
     def s(key, val):
         v = (val + '\0').encode('utf-16le'); n = node(key, v, 1, vlen=len(val) + 1)
         return n + b'\0' * ((4 - len(n) % 4) % 4)
-    ver = (1, 7, 0, 0)
+    ver = (1, 71, 0, 0)
     ffi = struct.pack('<13I', 0xFEEF04BD, 0x10000, (ver[0] << 16) | ver[1], (ver[2] << 16) | ver[3], (ver[0] << 16) | ver[1], (ver[2] << 16) | ver[3], 0x3F, 0, 0x40004, 1, 0, 0, 0)
-    strs = b''.join(s(k, v) for k, v in [('CompanyName', 'NeQo'), ('FileDescription', 'Insulin Diary Power Control'), ('ProductName', 'Insulin Diary Power Control'), ('FileVersion', '1.7.0.0'), ('ProductVersion', '1.7.0.0'), ('OriginalFilename', 'Insulin Diary Power Control.exe'), ('LegalCopyright', 'No copyright - public domain (The Unlicense). Free software by NeQo.')])
+    strs = b''.join(s(k, v) for k, v in [('CompanyName', 'NeQo'), ('FileDescription', 'Insulin Diary Power Control'), ('ProductName', 'Insulin Diary Power Control'), ('FileVersion', '1.71.0.0'), ('ProductVersion', '1.71.0.0'), ('OriginalFilename', 'Insulin Diary Power Control.exe'), ('LegalCopyright', 'No copyright - public domain (The Unlicense). Free software by NeQo.')])
     table = node('040904B0', children=strs)
     sfi = node('StringFileInfo', children=table, wtype=1)
     var = node('Translation', struct.pack('<HH', 0x0409, 0x04B0), 0)
