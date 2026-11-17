@@ -19,8 +19,8 @@ android {
         applicationId = "com.insulindiary.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.71"
+        versionCode = 8
+        versionName = "1.72"
     }
 
     signingConfigs {
@@ -54,6 +54,8 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5") // newer than the one Play services pulls in (needed for file picking)
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    // Built-in fallback scanner for phones where Google's scanner isn't available or fails to start
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303") // real JSON for plain JVM unit tests

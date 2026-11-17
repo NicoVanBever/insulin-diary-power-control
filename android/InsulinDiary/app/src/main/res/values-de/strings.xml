@@ -8,4 +8,5 @@
     <string name="saved_downloads">In Downloads gespeichert: %1$s</string>
     <string name="saved_at">Gespeichert: %1$s</string>
     <string name="save_failed">Datei konnte nicht gespeichert werden: %1$s</string>
+    <string name="scan_prompt">Richten Sie die Kamera auf den Code am PC</string>
 </resources>

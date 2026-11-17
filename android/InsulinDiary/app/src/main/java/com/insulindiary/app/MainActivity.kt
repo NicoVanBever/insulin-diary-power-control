@@ -36,6 +36,10 @@ import androidx.webkit.WebViewAssetLoader
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.journeyapps.barcodescanner.CaptureActivity
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.google.zxing.client.android.Intents
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -277,14 +281,44 @@ class MainActivity : ComponentActivity() {
         web.evaluateJavascript("window.onSyncProgress(" + JSONObject.quote(msg) + ")", null)
     }
 
+    /** Google's scanner first (no camera permission needed); the app's own scanner when that isn't available. */
     private fun startScan(state: String) {
-        val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
-        GmsBarcodeScanning.getClient(this, options).startScan()
-            .addOnSuccessListener { code -> syncWithPc(code.rawValue ?: "", state, checkPairing = true) }
-            .addOnCanceledListener { finishSync(JSONObject().put("ok", false).put("cancelled", true).toString()) }
-            .addOnFailureListener { e ->
-                finishSync(err("The scanner couldn't start (${e.message}). Make sure Google Play services is up to date and try again."))
-            }
+        if (syncPrefs.getBoolean("builtinScanner", false)) { startBuiltinScan(state); return }
+        try {
+            val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+            GmsBarcodeScanning.getClient(this, options).startScan()
+                .addOnSuccessListener { code -> syncWithPc(code.rawValue ?: "", state, checkPairing = true) }
+                .addOnCanceledListener { finishSync(JSONObject().put("ok", false).put("cancelled", true).toString()) }
+                .addOnFailureListener {
+                    // Google's scanner is missing, still downloading or blocked on this phone: use our own from now on.
+                    syncPrefs.edit().putBoolean("builtinScanner", true).apply()
+                    startBuiltinScan(state)
+                }
+        } catch (e: Exception) {
+            syncPrefs.edit().putBoolean("builtinScanner", true).apply()
+            startBuiltinScan(state)
+        }
+    }
+
+    private var scanState = ""
+    private val builtinScan = registerForActivityResult(ScanContract()) { r ->
+        val raw = r.contents
+        if (raw == null) {
+            val denied = r.originalIntent?.hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION) == true
+            finishSync(if (denied) err("Insulin Diary needs the camera to scan the code. Allow the camera in the phone's settings (Apps → Insulin Diary → Permissions) and try again.")
+                else JSONObject().put("ok", false).put("cancelled", true).toString())
+        } else syncWithPc(raw, scanState, checkPairing = true)
+    }
+
+    private fun startBuiltinScan(state: String) {
+        scanState = state
+        try {
+            builtinScan.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt(getString(R.string.scan_prompt)).setBeepEnabled(false).setOrientationLocked(true)
+                .setCaptureActivity(PortraitCaptureActivity::class.java))
+        } catch (e: Exception) {
+            finishSync(err("The scanner couldn't start (${e.message}). Make sure Google Play services is up to date and try again."))
+        }
     }
 
     private fun syncWithPc(raw: String, state: String, checkPairing: Boolean) {
@@ -365,3 +399,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+
+/** The built-in scanner, upright like the rest of the app. */
+class PortraitCaptureActivity : CaptureActivity()

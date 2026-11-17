@@ -21,7 +21,7 @@ import (
 var page []byte
 
 const (
-	appVersion = "1.71"
+	appVersion = "1.72"
 	localPort  = "47621"
 	lanPort    = "47622"
 	maxBody    = 256 << 20

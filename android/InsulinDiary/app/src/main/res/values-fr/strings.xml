@@ -8,4 +8,5 @@
     <string name="saved_downloads">Enregistré dans Téléchargements : %1$s</string>
     <string name="saved_at">Enregistré : %1$s</string>
     <string name="save_failed">Impossible d\'enregistrer le fichier : %1$s</string>
+    <string name="scan_prompt">Pointez l\'appareil photo vers le code sur votre PC</string>
 </resources>
